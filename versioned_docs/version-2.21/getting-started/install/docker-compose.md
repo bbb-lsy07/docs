@@ -45,6 +45,10 @@ import DockerRegistryList from "./slots/_docker-registry-list.md"
    需要注意的是，此文档为了更加方便的管理配置，所有与 Halo 相关的配置都使用 Docker 容器启动参数代替，所以无需创建 application.yaml 文件。
    :::
 
+   :::warning
+   示例中的 `version: "3"` 在最新版本的 Docker Compose（2.0 及以上）中已过时，运行 `docker-compose up -d` 会触发警告：`WARN[0000] /path/to/docker-compose.yaml: version is obsolete`。新版 Docker Compose 自动检测配置文件格式，建议删除 `version` 字段。以下示例保留了 `version: "3"` 以保持原始格式，但生产环境中推荐移除。
+   :::
+
    <Tabs queryString="current">
     <TabItem value="halo-postgresql" label="Halo + PostgreSQL" default>
          ```yaml {26-32,46} title="~/halo/docker-compose.yaml"
@@ -79,7 +83,7 @@ import DockerRegistryList from "./slots/_docker-registry-list.md"
                - --spring.r2dbc.password=openpostgresql
                - --spring.sql.init.platform=postgresql
                # 外部访问地址，请根据实际需要修改
-               - --halo.external-url=http://localhost:8090/
+               - --halo.external-url=https://example.com
            halodb:
              image: postgres:15.4
              restart: on-failure:3
@@ -106,6 +110,10 @@ import DockerRegistryList from "./slots/_docker-registry-list.md"
          :::
     </TabItem>
     <TabItem value="halo-mysql" label="Halo + MySQL">
+         :::info
+         优化后的配置已移除 `network_mode: host`，使用桥接网络，并添加了安全的密码配置。请替换 `your_secure_password` 为实际密码，并确保 `--halo.external-url` 为你的实际域名。
+         :::
+
          ```yaml {26-32,54} title="~/halo/docker-compose.yaml"
          version: "3"
 
@@ -135,17 +143,16 @@ import DockerRegistryList from "./slots/_docker-registry-list.md"
                - --spring.r2dbc.url=r2dbc:pool:mysql://halodb:3306/halo
                - --spring.r2dbc.username=root
                # MySQL 的密码，请保证与下方 MYSQL_ROOT_PASSWORD 的变量值一致。
-               - --spring.r2dbc.password=o#DwN&JSa56
+               - --spring.r2dbc.password=your_secure_password
                - --spring.sql.init.platform=mysql
                # 外部访问地址，请根据实际需要修改
-               - --halo.external-url=http://localhost:8090/
-
+               - --halo.external-url=https://example.com
            halodb:
              image: mysql:8.1.0
              restart: on-failure:3
              networks:
                halo_network:
-             command: 
+             command:
                - --default-authentication-plugin=caching_sha2_password
                - --character-set-server=utf8mb4
                - --collation-server=utf8mb4_general_ci
@@ -160,80 +167,89 @@ import DockerRegistryList from "./slots/_docker-registry-list.md"
                start_period: 30s
              environment:
                # 请修改此密码，并对应修改上方 Halo 服务的 SPRING_R2DBC_PASSWORD 变量值
-               - MYSQL_ROOT_PASSWORD=o#DwN&JSa56
+               - MYSQL_ROOT_PASSWORD=your_secure_password
                - MYSQL_DATABASE=halo
 
          networks:
            halo_network:
          ```
 
-        :::info
-        此示例的 MySQL 数据库容器默认没有设置端口映射，如果需要在容器外部访问数据库，可以自行在 `halodb` 服务中添加端口映射，MySQL 的端口为 `3306`。
-        :::
+         :::info
+         此示例的 MySQL 数据库容器默认没有设置端口映射，如果需要在容器外部访问数据库，可以自行在 `halodb` 服务中添加端口映射，MySQL 的端口为 `3306`。
+         :::
     </TabItem>
     <TabItem value="halo-h2" label="Halo + H2">
-        :::warning
-        不推荐在生产环境使用默认的 H2 数据库，这可能因为操作不当导致数据文件损坏。如果因为某些原因（如内存不足以运行独立数据库）必须要使用，建议按时[备份数据](../../user-guide/backup.md)。
-        :::
+         :::warning
+         不推荐在生产环境使用默认的 H2 数据库，这可能因为操作不当导致数据文件损坏。如果因为某些原因（如内存不足以运行独立数据库）必须要使用，建议按时[备份数据](../../user-guide/backup.md)。
+         :::
 
-        ```yaml {22} title="~/halo/docker-compose.yaml"
-        version: "3"
+         ```yaml {22} title="~/halo/docker-compose.yaml"
+         version: "3"
 
-        services:
-          halo:
-            image: registry.fit2cloud.com/halo/halo:2.21
-            restart: on-failure:3
-            volumes:
-              - ./halo2:/root/.halo2
-            ports:
-              - "8090:8090"
-            healthcheck:
-              test: ["CMD", "curl", "-f", "http://localhost:8090/actuator/health/readiness"]
-              interval: 30s
-              timeout: 5s
-              retries: 5
-              start_period: 30s
-            environment:
-              # JVM 参数，默认为 -Xmx256m -Xms256m，可以根据实际情况做调整，置空表示不添加 JVM 参数
-              - JVM_OPTS=-Xmx256m -Xms256m
-            command:
-              # 外部访问地址，请根据实际需要修改
-              - --halo.external-url=http://localhost:8090/
-        ```
+         services:
+           halo:
+             image: registry.fit2cloud.com/halo/halo:2.21
+             restart: on-failure:3
+             volumes:
+               - ./halo2:/root/.halo2
+             ports:
+               - "8090:8090"
+             healthcheck:
+               test: ["CMD", "curl", "-f", "http://localhost:8090/actuator/health/readiness"]
+               interval: 30s
+               timeout: 5s
+               retries: 5
+               start_period: 30s
+             environment:
+               # JVM 参数，默认为 -Xmx256m -Xms256m，可以根据实际情况做调整，置空表示不添加 JVM 参数
+               - JVM_OPTS=-Xmx256m -Xms256m
+             command:
+               # 外部访问地址，请根据实际需要修改
+               - --halo.external-url=https://example.com
+         ```
     </TabItem>
     <TabItem value="external-db" label="使用外部数据库">
-        ```yaml {7,15-22} title="~/halo/docker-compose.yaml"
-        version: "3"
+         :::info
+         优化后的配置已移除 `network_mode: host` 和 `--server.port=8090`，使用桥接网络和默认端口。请替换 `your_secure_password` 为实际密码，并确保 `--halo.external-url` 为你的实际域名。
+         :::
 
-        services:
-          halo:
-            image: registry.fit2cloud.com/halo/halo:2.21
-            restart: on-failure:3
-            network_mode: "host"
-            volumes:
-              - ./halo2:/root/.halo2
-            environment:
-              # JVM 参数，默认为 -Xmx256m -Xms256m，可以根据实际情况做调整，置空表示不添加 JVM 参数
-              - JVM_OPTS=-Xmx256m -Xms256m
-            command:
-              # 修改为自己已有的 MySQL 配置
-              - --spring.r2dbc.url=r2dbc:pool:mysql://localhost:3306/halo
-              - --spring.r2dbc.username=root
-              - --spring.r2dbc.password=
-              - --spring.sql.init.platform=mysql
-              # 外部访问地址，请根据实际需要修改
-              - --halo.external-url=http://localhost:8090/
-              # 端口号 默认8090
-              - --server.port=8090
-        ```
+         ```yaml {7,15-22} title="~/halo/docker-compose.yaml"
+         version: "3"
 
-        :::info
-        使用外部数据库时，需要提前手动创建好数据库，以 MySQL 为例：
+         services:
+           halo:
+             image: registry.fit2cloud.com/halo/halo:2.21
+             restart: on-failure:3
+             volumes:
+               - ./halo2:/root/.halo2
+             ports:
+               - "8090:8090"
+             healthcheck:
+               test: ["CMD", "curl", "-f", "http://localhost:8090/actuator/health/readiness"]
+               interval: 30s
+               timeout: 5s
+               retries: 5
+               start_period: 30s
+             environment:
+               # JVM 参数，默认为 -Xmx256m -Xms256m，可以根据实际情况做调整，置空表示不添加 JVM 参数
+               - JVM_OPTS=-Xmx256m -Xms256m
+             command:
+               # 修改为自己已有的 MySQL 配置
+               - --spring.r2dbc.url=r2dbc:pool:mysql://<your-mysql-host>:3306/halo
+               - --spring.r2dbc.username=root
+               - --spring.r2dbc.password=your_secure_password
+               - --spring.sql.init.platform=mysql
+               # 外部访问地址，请根据实际需要修改
+               - --halo.external-url=https://example.com
+         ```
 
-        ```sql
-        create database halo character set utf8mb4 collate utf8mb4_bin;
-        ```
-        :::
+         :::info
+         使用外部数据库时，需要提前手动创建好数据库，以 MySQL 为例：
+
+         ```sql
+         create database halo character set utf8mb4 collate utf8mb4_bin;
+         ```
+         :::
     </TabItem>
    </Tabs>
 
@@ -265,20 +281,27 @@ import DockerRegistryList from "./slots/_docker-registry-list.md"
 
 ## 更新容器组
 
-1. 备份数据，可以参考 [备份与恢复](../../user-guide/backup.md) 进行完整备份（可选，但推荐备份）。
+1. 备份数据，可以参考 [备份与恢复](../../user-guide/backup.md) 进行完整备份（强烈推荐）。
 2. 更新 Halo 服务
 
    修改 `docker-compose.yaml` 中配置的镜像版本。
 
    ```yaml {3}
    services:
-    halo:
-      image: registry.fit2cloud.com/halo/halo:2.21
+     halo:
+       image: registry.fit2cloud.com/halo/halo:2.21
    ```
 
+   拉取最新镜像并重启服务：
+
    ```bash
-   docker-compose up -d
+   docker-compose pull
+   docker-compose up -d --force-recreate
    ```
+
+   :::tip
+   使用 `docker-compose pull` 确保拉取最新镜像，`--force-recreate` 确保容器使用新镜像重新创建。
+   :::
 
 ## 反向代理
 
